@@ -1,0 +1,12 @@
+# YouTube API
+google-api-python-client==2.108.0
+
+# Configuration
+python-dotenv==1.0.0
+pyyaml==6.0.1
+
+# Kafka
+confluent-kafka==2.3.0
+
+# Data processing (will add more later)
+duckdb==1.1.3
