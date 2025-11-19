@@ -277,7 +277,7 @@ class CommentFetcher:
             logger.info(f"Kafka: Delivered {self.kafka_messages_sent} messages to topic raw_comments")
 
 
-def load_videos_config(config_path: str = 'config/videos.yaml') -> Dict:
+def load_videos_config(config_path: str = '../config/videos.yaml') -> Dict:
     """Load video configuration from YAML."""
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
