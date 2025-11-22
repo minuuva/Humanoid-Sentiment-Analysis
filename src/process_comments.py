@@ -16,7 +16,7 @@ import time
 import logging
 import signal
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from dotenv import load_dotenv
 import duckdb
@@ -75,12 +75,9 @@ def init_duckdb(db_path: str = 'data/youtube.duckdb'):
             published_at TIMESTAMP,
             updated_at TIMESTAMP,
             processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            
-            -- Sentiment fields (will add later with actual analysis)
             sentiment_label VARCHAR,
             sentiment_score FLOAT,
-            
-            -- Metadata
+            phrases JSON,
             ingested_at TIMESTAMP
         )
     """)
@@ -146,7 +143,7 @@ def insert_comment(conn, comment_data: dict):
             comment_data['reply_count'],
             comment_data['published_at'],
             comment_data['updated_at'],
-            datetime.utcnow().isoformat()
+            datetime.now(timezone.utc).isoformat()
         ])
         
     except Exception as e:

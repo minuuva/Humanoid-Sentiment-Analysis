@@ -12,7 +12,7 @@ import time
 import logging
 import signal
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -86,36 +86,37 @@ class CommentFetcher:
         except Exception as e:
             logger.error(f"Kafka send error: {e}")
     
-    def get_existing_comments(self, video_id: str) -> tuple[List[Dict], Optional[str]]:
-        """Load existing comments and return newest timestamp."""
+    def get_existing_comments(self, video_id: str) -> tuple[List[Dict], set]:
+        """Load existing comments and return list + set of IDs for fast lookup."""
         json_file = self.data_dir / f"{video_id}.json"
         
         if not json_file.exists():
-            return [], None
+            return [], set()
         
         try:
             with open(json_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 comments = data.get('comments', [])
-                if comments:
-                    newest = max(comments, key=lambda x: x['published_at'])
-                    return comments, newest['published_at']
-                return [], None
+                existing_ids = {c['comment_id'] for c in comments}
+                return comments, existing_ids
         except Exception as e:
             logger.error(f"Error loading {json_file}: {e}")
-            return [], None
+            return [], set()
     
-    def fetch_video_comments(self, video_id: str, published_after: Optional[str] = None) -> Dict:
+    def fetch_video_comments(self, video_id: str, category: str = None, existing_ids: set = None) -> Dict:
         """
-        Fetch ALL comments for a video (or only new ones if published_after is set).
+        Fetch comments for a video. Uses smart ordering for efficiency.
         
         Args:
             video_id: YouTube video ID
-            published_after: ISO timestamp - skip comments older than this
+            existing_ids: Set of existing comment IDs (for deduplication)
         
         Returns:
             Dict with success status, comments, and metadata
         """
+        if existing_ids is None:
+            existing_ids = set()
+        
         logger.info(f"Fetching comments for video: {video_id}")
         
         try:
@@ -137,15 +138,20 @@ class CommentFetcher:
             logger.info(f"Video: '{video_title}' by {channel_title}")
             logger.info(f"Total comments reported: {total_comments_reported:,}")
             
-            if published_after:
-                logger.info(f"Fetching only comments newer than: {published_after}")
+            # Check if incremental mode (has existing comments)
+            is_incremental = len(existing_ids) > 0
+            
+            if is_incremental:
+                logger.info(f"Incremental mode: Skip duplicates (already have {len(existing_ids)} comments)")
             else:
-                logger.info(f"Fetching ALL comments (first run)")
+                logger.info(f"First run: Fetching all comments")
             
             # Fetch comments with pagination
             new_comments = []
             next_page_token = None
             page_num = 0
+            consecutive_empty_pages = 0
+            MAX_EMPTY_PAGES = 3  # Stop after 3 pages with no new comments
             
             while True:
                 if shutdown_flag:
@@ -159,7 +165,7 @@ class CommentFetcher:
                         'part': 'snippet',
                         'videoId': video_id,
                         'maxResults': 100,
-                        'order': 'time',  # Oldest first
+                        'order': 'time',  # Always chronological (oldest first)
                         'textFormat': 'plainText'
                     }
                     
@@ -170,6 +176,7 @@ class CommentFetcher:
                     self.quota_used += 1
                     
                     page_comments = []
+                    page_duplicates = 0
                     
                     for item in comments_response['items']:
                         top_comment = item['snippet']['topLevelComment']['snippet']
@@ -177,6 +184,7 @@ class CommentFetcher:
                         comment_data = {
                             'comment_id': item['id'],
                             'video_id': video_id,
+                            'category': category,
                             'author': top_comment['authorDisplayName'],
                             'text': top_comment['textDisplay'],
                             'like_count': top_comment['likeCount'],
@@ -185,8 +193,9 @@ class CommentFetcher:
                             'reply_count': item['snippet']['totalReplyCount']
                         }
                         
-                        # Skip if we already have this comment
-                        if published_after and comment_data['published_at'] <= published_after:
+                        # Skip duplicates (ID-based check)
+                        if comment_data['comment_id'] in existing_ids:
+                            page_duplicates += 1
                             continue
                         
                         page_comments.append(comment_data)
@@ -194,7 +203,17 @@ class CommentFetcher:
                     
                     new_comments.extend(page_comments)
                     
-                    logger.info(f"Page {page_num}: {len(page_comments)} new comments | Total new: {len(new_comments)}")
+                    logger.info(f"Page {page_num}: {len(page_comments)} new, {page_duplicates} duplicates | Total new: {len(new_comments)}")
+                    
+                    # Early stopping for incremental mode
+                    if is_incremental:
+                        if len(page_comments) == 0:
+                            consecutive_empty_pages += 1
+                            if consecutive_empty_pages >= MAX_EMPTY_PAGES:
+                                logger.info(f"Early stop: {MAX_EMPTY_PAGES} consecutive pages with no new comments")
+                                break
+                        else:
+                            consecutive_empty_pages = 0
                     
                     # Check if more pages exist
                     next_page_token = comments_response.get('nextPageToken')
@@ -219,7 +238,7 @@ class CommentFetcher:
                 'channel_title': channel_title,
                 'new_comments': new_comments,
                 'total_fetched': len(new_comments),
-                'fetch_timestamp': datetime.utcnow().isoformat()
+                'fetch_timestamp': datetime.now(timezone.utc).isoformat()
             }
         
         except Exception as e:
@@ -260,7 +279,7 @@ class CommentFetcher:
             'channel_title': result.get('channel_title', ''),
             'category': result.get('category', ''),
             'total_comments': len(final_comments),
-            'last_updated': datetime.utcnow().isoformat(),
+            'last_updated': datetime.now(timezone.utc).isoformat(),
             'comments': final_comments
         }
         
@@ -277,7 +296,7 @@ class CommentFetcher:
             logger.info(f"Kafka: Delivered {self.kafka_messages_sent} messages to topic raw_comments")
 
 
-def load_videos_config(config_path: str = '../config/videos.yaml') -> Dict:
+def load_videos_config(config_path: str = 'config/videos.yaml') -> Dict:
     """Load video configuration from YAML."""
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
@@ -329,11 +348,10 @@ def main():
                 logger.info(f"\n--- Video {total_videos_attempted}: {video_id} ---")
                 
                 # Check for existing comments
-                existing_comments, newest_timestamp = fetcher.get_existing_comments(video_id)
+                existing_comments, existing_ids = fetcher.get_existing_comments(video_id)
                 
                 if existing_comments:
                     logger.info(f"Found {len(existing_comments)} existing comments")
-                    logger.info(f"Newest comment: {newest_timestamp}")
                     logger.info(f"Mode: Incremental (fetch only new comments)")
                 else:
                     logger.info(f"No existing comments")
@@ -342,7 +360,8 @@ def main():
                 # Fetch comments
                 result = fetcher.fetch_video_comments(
                     video_id,
-                    published_after=newest_timestamp
+                    category=category_name,
+                    existing_ids=existing_ids
                 )
                 
                 if result.get('success'):
