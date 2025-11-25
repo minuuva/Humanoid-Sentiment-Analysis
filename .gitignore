@@ -1,0 +1,36 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Data (large files - don't commit to git)
+data/
+*.duckdb
+*.json
+
+# Visualizations (can be regenerated)
+viz/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Environment variables
+.env
+
+# Prefect
+.prefect/
+
