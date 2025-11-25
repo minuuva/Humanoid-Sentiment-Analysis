@@ -14,9 +14,6 @@ data/
 *.duckdb
 *.json
 
-# Visualizations (can be regenerated)
-viz/
-
 # IDE
 .vscode/
 .idea/
