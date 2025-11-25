@@ -21,7 +21,8 @@ plotly==5.24.1
 wordcloud==1.9.3
 matplotlib==3.9.2
 pandas==2.2.3
+kaleido==0.2.1
 
 # Prefect for workflow orchestration
-prefect==2.14.6
-griffe==0.27.2
+prefect==2.20.24
+griffe==1.5.1
