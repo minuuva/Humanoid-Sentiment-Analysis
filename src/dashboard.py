@@ -282,6 +282,11 @@ def main():
     # Group by date
     timeline_df = filtered_df.copy()
     timeline_df['date'] = timeline_df['published_at'].dt.date
+    
+    # Filter to start from July 1st, 2025 (tracking recent comments)
+    start_date = pd.to_datetime('2025-07-01').date()
+    timeline_df = timeline_df[timeline_df['date'] >= start_date]
+    
     timeline_sentiment = timeline_df.groupby(['date', 'sentiment_label']).size().reset_index(name='count')
     
     fig3 = px.line(
@@ -338,43 +343,61 @@ def main():
     video_counts.columns = ['video_id', 'comment_count', 'avg_sentiment', 'category']
     video_counts = video_counts.sort_values('comment_count', ascending=False)
     
+    # Limit to top 12 videos for better readability
+    video_counts = video_counts.head(12)
+    
     # Add video titles with truncation for display
     video_counts['video_title_full'] = video_counts['video_id'].map(video_titles).fillna(video_counts['video_id'])
     
-    # Truncate long titles for x-axis (show full in hover)
-    def truncate_title(title, max_length=45):
+    # Truncate long titles for display (show full in hover)
+    def truncate_title(title, max_length=60):
         if len(title) <= max_length:
             return title
         return title[:max_length].rsplit(' ', 1)[0] + '...'
     
     video_counts['video_title_short'] = video_counts['video_title_full'].apply(truncate_title)
     
+    # Sort by comment_count for horizontal bar chart (ascending so highest is on top)
+    video_counts = video_counts.sort_values('comment_count', ascending=True)
+    
+    # Use horizontal bar chart for better label readability
     fig5 = px.bar(
         video_counts,
-        x='video_title_short',
-        y='comment_count',
+        y='video_title_short',
+        x='comment_count',
         color='avg_sentiment',
-        title='Comment Volume and Average Sentiment by Video',
-        labels={'comment_count': 'Number of Comments', 'video_title_short': 'Video', 'avg_sentiment': 'Avg Sentiment Score'},
+        title='Top 12 Videos by Comment Volume & Avg Sentiment',
+        labels={
+            'comment_count': 'Number of Comments', 
+            'video_title_short': 'Video', 
+            'avg_sentiment': 'Avg Sentiment Score'
+        },
         color_continuous_scale='RdYlGn',
         color_continuous_midpoint=0,
-        height=500,
+        height=600,
+        orientation='h',
         hover_data={
             'video_title_short': False,  # Hide truncated version
             'video_title_full': True,     # Show full title
             'category': True, 
-            'video_id': True,
-            'comment_count': True,
+            'video_id': False,
+            'comment_count': ':,',
             'avg_sentiment': ':.3f'
         }
     )
     fig5.update_layout(
-        xaxis_title="Video", 
-        yaxis_title="Comment Count", 
-        xaxis={'tickangle': -45},
-        hovermode='closest'
+        xaxis_title="Comment Count", 
+        yaxis_title="Video",
+        yaxis={'tickfont': {'size': 11}},
+        hovermode='closest',
+        margin=dict(l=20, r=20, t=50, b=50)
     )
     st.plotly_chart(fig5, use_container_width=True)
+    
+    # Show total count info
+    total_videos = len(filtered_df['video_id'].unique())
+    if total_videos > 12:
+        st.caption(f"📊 Showing top 12 of {total_videos} total videos (hover bars for full details)")
     
     # Additional Stats
     st.markdown("---")
