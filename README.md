@@ -8,7 +8,11 @@ Youtube Videos Related to Humanoid Robots
 
 ### Instructions
 
-After forking this repository, please start a virtual environment and export your own Youtube API as an environment variable. 
+After forking this repository, please start a virtual environment and export your own Youtube API as an environment variable.
+
+```bash
+export YOUTUBE_API_KEY="your_youtube_api_key"
+```
 
 Next, run 
 ```bash
@@ -22,15 +26,17 @@ Our entire pipeline is wrapped in a prefect workflow
 prefect server start
 ```
 on a seperate terminal
+
 2. Run 
 ```bash
 python pipeline.py
 ```
-or '
+or 
 ```bash
 python3 pipeline.py
 ```
 on the main terminal
+
 3. After the prefect flow ends, run 
 ```bash
 streamlit run dashboard.py
