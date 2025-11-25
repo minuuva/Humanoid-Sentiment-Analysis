@@ -25,7 +25,6 @@ class CommentFetcher:
     """Fetch YouTube comments with Kafka streaming."""
     
     def __init__(self, api_key: str, data_dir: str = 'data/raw', enable_kafka: bool = True):
-        # We use get_run_logger() inside tasks, but if initialized outside a task (testing), fallback to print
         try:
             self.logger = get_run_logger()
         except:
@@ -219,7 +218,6 @@ class CommentFetcher:
 @task(name="Load Video Config", tags=["config"])
 def load_videos_config() -> Dict:
     """Load video configuration from YAML."""
-    # Assuming config is in ../config/videos.yaml relative to this script
     current_dir = Path(__file__).parent.resolve()
     config_path = current_dir.parent / "config" / "videos.yaml"
 
