@@ -74,8 +74,4 @@ def main_flow():
     print_summary(results)
 
 if __name__ == "__main__":
-    main_flow().serve(
-        name="daily-humanoid-fetch",
-        cron="0 8 * * *", 
-        tags=["production", "daily"]
-    )
+    main_flow()
